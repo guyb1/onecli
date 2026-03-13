@@ -97,6 +97,36 @@ export const validateProxySecret = (headerValue: string | null): boolean => {
  * Called during OSS startup (entrypoint.sh) so the proxy can read it.
  * No-op if `PROXY_SECRET` env var is set (cloud mode).
  */
+// ── Proxy URL helpers ────────────────────────────────────────────────────
+
+const PROXY_PORT = process.env.PROXY_PORT ?? "10255";
+
+/**
+ * Get the proxy host address.
+ * Uses `PROXY_HOST` env var if set, otherwise falls back to Docker internal host
+ * (cloud) or `localhost` (OSS).
+ */
+export const getProxyHost = (): string => {
+  if (process.env.PROXY_HOST) return process.env.PROXY_HOST;
+  if (isCloud) {
+    throw new Error("PROXY_HOST env var is required in cloud edition");
+  }
+  // In Docker (OSS), the proxy runs as a sibling container
+  return typeof globalThis !== "undefined" &&
+    process.env.NODE_ENV === "production"
+    ? "host.docker.internal"
+    : "localhost";
+};
+
+/**
+ * Build the base URL for the proxy's HTTP API (e.g. `http://localhost:10255`).
+ */
+export const getProxyBaseUrl = (): string => {
+  return `http://${getProxyHost()}:${PROXY_PORT}`;
+};
+
+// ── Secret file management ──────────────────────────────────────────────
+
 export const ensureProxySecretFile = (): void => {
   // Cloud: env var is used, no file needed
   if (process.env.PROXY_SECRET?.trim()) return;

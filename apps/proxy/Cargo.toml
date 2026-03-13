@@ -55,6 +55,14 @@ anyhow = "1"
 # Time (for certificate validity)
 time = "0.3"
 
+# Remote access (Bitwarden vault credential injection)
+bw-rat-client = { path = "../../../remote-access/crates/bw-rat-client" }
+bw-proxy-client = { path = "../../../remote-access/crates/bw-proxy-client" }
+bw-proxy-protocol = { path = "../../../remote-access/crates/bw-proxy-protocol" }
+bw-noise-protocol = { path = "../../../remote-access/crates/bw-noise-protocol" }
+async-trait = "0.1"
+hex = "0.4"
+
 [dev-dependencies]
 tempfile = "3"
 

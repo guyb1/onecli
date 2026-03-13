@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use dashmap::DashMap;
 use futures_util::TryStreamExt;
 use http_body::Body as HttpBody;
-use http_body_util::{Empty, StreamBody};
+use http_body_util::{BodyExt, Full, StreamBody};
 use hyper::body::{Bytes, Frame, Incoming};
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::server::conn::http1;
@@ -24,6 +24,8 @@ use tracing::{info, warn};
 use crate::ca::CertificateAuthority;
 use crate::connect::{self, CachedConnect, ConnectCacheKey, ConnectError};
 use crate::inject::{self, ConnectRule};
+use crate::remote::RemoteAccessManager;
+use crate::remote_mapping;
 
 // ── ProxyServer ─────────────────────────────────────────────────────────
 
@@ -38,6 +40,8 @@ pub struct ProxyServer {
     proxy_secret: Option<Arc<str>>,
     /// Cache of resolved connect responses per (agent_token, host).
     connect_cache: Arc<DashMap<ConnectCacheKey, CachedConnect>>,
+    /// Remote access manager for Bitwarden vault credential injection.
+    remote_access: Option<Arc<RemoteAccessManager>>,
 }
 
 impl ProxyServer {
@@ -46,6 +50,7 @@ impl ProxyServer {
         port: u16,
         api_url: String,
         proxy_secret: Option<String>,
+        remote_access: Option<Arc<RemoteAccessManager>>,
     ) -> Self {
         Self {
             ca: Arc::new(ca),
@@ -59,6 +64,7 @@ impl ProxyServer {
             api_url: Arc::from(api_url.as_str()),
             proxy_secret: proxy_secret.map(|s| Arc::from(s.as_str())),
             connect_cache: Arc::new(DashMap::new()),
+            remote_access,
         }
     }
 
@@ -78,6 +84,7 @@ impl ProxyServer {
             let api_url = Arc::clone(&self.api_url);
             let proxy_secret = self.proxy_secret.clone();
             let connect_cache = Arc::clone(&self.connect_cache);
+            let remote_access = self.remote_access.clone();
 
             tokio::spawn(async move {
                 if let Err(e) = handle_connection(
@@ -88,6 +95,7 @@ impl ProxyServer {
                     api_url,
                     proxy_secret,
                     connect_cache,
+                    remote_access,
                 )
                 .await
                 {
@@ -102,6 +110,7 @@ impl ProxyServer {
 
 /// Handle a single client connection. Parses the HTTP request and dispatches
 /// CONNECT requests to the MITM or tunnel handler.
+#[allow(clippy::too_many_arguments)]
 async fn handle_connection(
     stream: TcpStream,
     peer_addr: SocketAddr,
@@ -110,6 +119,7 @@ async fn handle_connection(
     api_url: Arc<str>,
     proxy_secret: Option<Arc<str>>,
     connect_cache: Arc<DashMap<ConnectCacheKey, CachedConnect>>,
+    remote_access: Option<Arc<RemoteAccessManager>>,
 ) -> Result<()> {
     let io = TokioIo::new(stream);
 
@@ -124,6 +134,7 @@ async fn handle_connection(
                 let api_url = Arc::clone(&api_url);
                 let proxy_secret = proxy_secret.clone();
                 let connect_cache = Arc::clone(&connect_cache);
+                let remote_access = remote_access.clone();
                 async move {
                     handle_request(
                         req,
@@ -133,6 +144,7 @@ async fn handle_connection(
                         api_url,
                         proxy_secret,
                         connect_cache,
+                        remote_access,
                     )
                     .await
                 }
@@ -143,7 +155,8 @@ async fn handle_connection(
         .context("serving HTTP connection")
 }
 
-/// Route incoming requests: CONNECT → MITM (or tunnel), everything else → reject.
+/// Route incoming requests: CONNECT → MITM (or tunnel), management API, or reject.
+#[allow(clippy::too_many_arguments)]
 async fn handle_request(
     req: Request<Incoming>,
     peer_addr: SocketAddr,
@@ -152,7 +165,8 @@ async fn handle_request(
     api_url: Arc<str>,
     proxy_secret: Option<Arc<str>>,
     connect_cache: Arc<DashMap<ConnectCacheKey, CachedConnect>>,
-) -> Result<Response<Empty<Bytes>>, anyhow::Error> {
+    remote_access: Option<Arc<RemoteAccessManager>>,
+) -> Result<Response<Full<Bytes>>, anyhow::Error> {
     if req.method() == Method::CONNECT {
         let host = req
             .uri()
@@ -166,7 +180,7 @@ async fn handle_request(
         // Convention: Basic base64("x:{token}") — token in password field.
         let agent_token = inject::extract_agent_token(&req).filter(|t| !t.is_empty());
 
-        let (intercept, rules) = if let Some(ref token) = agent_token {
+        let (mut intercept, mut rules) = if let Some(ref token) = agent_token {
             match connect::resolve(
                 token,
                 &hostname,
@@ -184,7 +198,7 @@ async fn handle_request(
                 }
                 Err(ConnectError::ApiUnreachable(e)) => {
                     warn!(peer = %peer_addr, host = %host, error = %e, "CONNECT rejected: API unreachable");
-                    let mut resp = Response::new(Empty::new());
+                    let mut resp = Response::new(Full::default());
                     *resp.status_mut() = hyper::StatusCode::BAD_GATEWAY;
                     return Ok(resp);
                 }
@@ -193,6 +207,24 @@ async fn handle_request(
             // No auth — plain tunnel (no MITM, no injection)
             (false, vec![])
         };
+
+        // Remote access fallback: if no rules matched from the DB and remote access is paired,
+        // try to fetch credentials from the user's Bitwarden vault.
+        if !intercept {
+            if let Some(ref ra) = remote_access {
+                if let Some(cred) = ra.request_credential(&hostname).await {
+                    let remote_rules = remote_mapping::credential_to_rules(&hostname, &cred);
+                    if !remote_rules.is_empty() {
+                        intercept = true;
+                        rules = remote_rules;
+                        info!(
+                            host = %hostname,
+                            "using remote access credential from Bitwarden vault"
+                        );
+                    }
+                }
+            }
+        }
 
         info!(
             peer = %peer_addr,
@@ -222,9 +254,37 @@ async fn handle_request(
 
         // 200 tells the client the tunnel is established.
         // hyper will then upgrade the connection, handing raw IO to our task above.
-        Ok(Response::new(Empty::new()))
+        Ok(Response::new(Full::default()))
     } else if req.method() == Method::GET && req.uri().path() == "/healthz" {
-        Ok(Response::new(Empty::new()))
+        Ok(Response::new(Full::default()))
+    } else if req.uri().path().starts_with("/api/remote/") {
+        // Remote access management API endpoints
+        if let Some(ref ra) = remote_access {
+            let (parts, body) = req.into_parts();
+            let body_bytes = body
+                .collect()
+                .await
+                .map(|c| c.to_bytes().to_vec())
+                .unwrap_or_default();
+            let req = Request::from_parts(parts, ());
+
+            if let Some(resp) =
+                crate::remote_api::handle_remote_api(&req, &body_bytes, ra, proxy_secret.as_deref())
+                    .await
+            {
+                return Ok(resp);
+            }
+
+            let mut resp = Response::new(Full::new(Bytes::from(r#"{"error":"not found"}"#)));
+            *resp.status_mut() = hyper::StatusCode::NOT_FOUND;
+            Ok(resp)
+        } else {
+            let mut resp = Response::new(Full::new(Bytes::from(
+                r#"{"error":"remote access not enabled"}"#,
+            )));
+            *resp.status_mut() = hyper::StatusCode::NOT_FOUND;
+            Ok(resp)
+        }
     } else {
         // Plain HTTP proxy requests are not supported — only CONNECT (HTTPS).
         warn!(
@@ -233,7 +293,7 @@ async fn handle_request(
             uri = %req.uri(),
             "rejected non-CONNECT request"
         );
-        let mut resp = Response::new(Empty::new());
+        let mut resp = Response::new(Full::default());
         *resp.status_mut() = hyper::StatusCode::BAD_REQUEST;
         Ok(resp)
     }
@@ -393,8 +453,8 @@ async fn tunnel(upgraded: hyper::upgrade::Upgraded, host: &str) -> Result<()> {
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 /// Build a 407 Proxy Authentication Required response.
-fn respond_407() -> Response<Empty<Bytes>> {
-    let mut resp = Response::new(Empty::new());
+fn respond_407() -> Response<Full<Bytes>> {
+    let mut resp = Response::new(Full::default());
     *resp.status_mut() = hyper::StatusCode::PROXY_AUTHENTICATION_REQUIRED;
     resp.headers_mut().insert(
         "proxy-authenticate",

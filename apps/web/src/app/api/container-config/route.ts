@@ -3,19 +3,10 @@ import { db } from "@onecli/db";
 import { validateApiKey } from "@/lib/validate-api-key";
 import { getServerSession } from "@/lib/auth/server";
 import { loadCaCertificate } from "@/lib/proxy-ca";
+import { getProxyHost } from "@/lib/proxy-secret";
 
 const PROXY_PORT = process.env.PROXY_PORT ?? "10255";
 const CA_CONTAINER_PATH = "/tmp/onecli-proxy-ca.pem";
-
-const isCloud = process.env.NEXT_PUBLIC_EDITION === "cloud";
-
-const getProxyHost = (): string => {
-  if (process.env.PROXY_HOST) return process.env.PROXY_HOST;
-  if (isCloud) {
-    throw new Error("PROXY_HOST env var is required in cloud edition");
-  }
-  return "host.docker.internal";
-};
 
 /**
  * GET /api/container-config
