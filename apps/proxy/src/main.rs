@@ -47,7 +47,7 @@ struct Cli {
     enable_remote_access: bool,
 
     /// WebSocket relay URL for remote access connections.
-    #[arg(long, default_value = "wss://relay.bitwarden.com")]
+    #[arg(long, default_value = "wss://rat1.lesspassword.dev")]
     relay_url: String,
 }
 
