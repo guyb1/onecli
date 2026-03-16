@@ -40,9 +40,9 @@ struct Cli {
     #[arg(long, default_value = "false")]
     enable_remote_access: bool,
 
-    /// WebSocket relay URL for remote access connections.
+    /// WebSocket proxy URL for remote access connections.
     #[arg(long, default_value = "wss://rat1.lesspassword.dev")]
-    relay_url: String,
+    proxy_url: String,
 }
 
 fn default_data_dir() -> &'static str {
@@ -88,9 +88,9 @@ async fn main() -> Result<()> {
 
     // Initialize remote access manager if enabled
     let remote_access = if cli.enable_remote_access {
-        info!(relay_url = %cli.relay_url, "initializing remote access");
+        info!(proxy_url = %cli.proxy_url, "initializing remote access");
         let config = RemoteAccessConfig {
-            relay_url: cli.relay_url,
+            proxy_url: cli.proxy_url,
         };
         match RemoteAccessManager::new(config, &data_dir) {
             Ok(manager) => {

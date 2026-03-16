@@ -1,14 +1,14 @@
 //! File-backed identity provider and session store for remote access.
 //!
-//! Implements the `IdentityProvider` and `SessionStore` traits from `bw-rat-client`
+//! Implements the `IdentityProvider` and `SessionStore` traits from `ap-client`
 //! using local files for persistence.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use bw_noise_protocol::MultiDeviceTransport;
-use bw_proxy_protocol::IdentityKeyPair;
-use bw_rat_client::{IdentityFingerprint, IdentityProvider, RemoteClientError, SessionStore};
+use ap_noise::MultiDeviceTransport;
+use ap_proxy_protocol::IdentityKeyPair;
+use ap_client::{IdentityFingerprint, IdentityProvider, RemoteClientError, SessionStore};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 

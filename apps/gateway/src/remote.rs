@@ -1,14 +1,14 @@
 //! Remote Access Manager — lifecycle, event loop, and credential requests.
 //!
-//! Wraps `RemoteClient` from `bw-rat-client` to provide a high-level interface
+//! Wraps `RemoteClient` from `ap-client` to provide a high-level interface
 //! for the gateway to fetch credentials from a paired Bitwarden vault.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bw_proxy_client::ProxyClientConfig;
-use bw_rat_client::{
+use ap_proxy_client::ProxyClientConfig;
+use ap_client::{
     CredentialData, DefaultProxyClient, IdentityFingerprint, IdentityProvider, Psk, RemoteClient,
     RemoteClientEvent, RemoteClientResponse, SessionStore,
 };
@@ -35,7 +35,7 @@ struct CachedCredential {
 // ── Config ──────────────────────────────────────────────────────────────
 
 pub(crate) struct RemoteAccessConfig {
-    pub relay_url: String,
+    pub proxy_url: String,
 }
 
 // ── RemoteAccessManager ─────────────────────────────────────────────────
@@ -213,7 +213,7 @@ impl RemoteAccessManager {
             ready,
             fingerprint,
             remote_fingerprint,
-            relay_url: self.config.relay_url.clone(),
+            proxy_url: self.config.proxy_url.clone(),
         }
     }
 
@@ -248,7 +248,7 @@ impl RemoteAccessManager {
 
         let identity = self.identity_provider.as_ref();
         let proxy_config = ProxyClientConfig {
-            proxy_url: self.config.relay_url.clone(),
+            proxy_url: self.config.proxy_url.clone(),
             identity_keypair: Some(identity.identity().clone()),
         };
         let proxy_client = DefaultProxyClient::new(proxy_config);
@@ -276,7 +276,7 @@ impl RemoteAccessManager {
             while let Some(event) = event_rx.recv().await {
                 match &event {
                     RemoteClientEvent::Connecting { proxy_url } => {
-                        info!(url = %proxy_url, "remote access: connecting to relay");
+                        info!(url = %proxy_url, "remote access: connecting to proxy");
                     }
                     RemoteClientEvent::Connected { fingerprint } => {
                         info!(fingerprint = %hex::encode(fingerprint.0), "remote access: connected");
@@ -319,5 +319,5 @@ pub(crate) struct RemoteAccessStatus {
     pub ready: bool,
     pub fingerprint: String,
     pub remote_fingerprint: Option<String>,
-    pub relay_url: String,
+    pub proxy_url: String,
 }

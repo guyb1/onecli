@@ -3,7 +3,7 @@
 //! Maps `CredentialData` from the Bitwarden vault into `ConnectRule` instructions
 //! that the gateway can apply during MITM interception.
 
-use bw_rat_client::CredentialData;
+use ap_client::CredentialData;
 
 use crate::inject::{ConnectRule, Injection};
 

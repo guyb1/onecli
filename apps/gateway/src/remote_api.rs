@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use bw_rat_client::{IdentityFingerprint, Psk};
+use ap_client::{IdentityFingerprint, Psk};
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::{Request, Response, StatusCode};
