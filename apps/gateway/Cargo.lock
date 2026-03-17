@@ -86,6 +86,8 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 [[package]]
 name = "ap-client"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "275f68d32b9be5e62f8520b58f3553b51b723b84afb29bf38b3dcc8cb5594fa8"
 dependencies = [
  "ap-error",
  "ap-noise",
@@ -107,6 +109,8 @@ dependencies = [
 [[package]]
 name = "ap-error"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2a3990d85208d59099f168fe123993dcb1c4f8bfd5265908a62ba57200e73fd"
 dependencies = [
  "ap-error-macro",
 ]
@@ -114,6 +118,8 @@ dependencies = [
 [[package]]
 name = "ap-error-macro"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae10d9755d963bf377773da208feb94ec43f0a3cc2717d7e7929cc88ed70f885"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -124,6 +130,8 @@ dependencies = [
 [[package]]
 name = "ap-noise"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c887e813f190cb5f841b96b223f12bda7a7c72ce52d87b00799ff8db2b892c95"
 dependencies = [
  "ap-error",
  "base64",
@@ -144,6 +152,8 @@ dependencies = [
 [[package]]
 name = "ap-proxy-client"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1533e2380223480c0d19af139bb0a9e8228c9dad698795e692bc31eac572ed20"
 dependencies = [
  "ap-proxy-protocol",
  "futures-util",
@@ -156,6 +166,8 @@ dependencies = [
 [[package]]
 name = "ap-proxy-protocol"
 version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "603e498bbcb1f22e6953b280c2a6af5b5e6928072760c525bbbd4771c4e4bedc"
 dependencies = [
  "ap-error",
  "coset",
