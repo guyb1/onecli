@@ -1,99 +1,66 @@
 "use server";
 
-import { randomBytes } from "crypto";
-import { db } from "@onecli/db";
 import { resolveUserId } from "@/lib/actions/resolve-user";
+import type { SecretMode } from "@/lib/services/agent-service";
+import {
+  listAgents,
+  getDefaultAgent as getDefaultAgentService,
+  createAgent as createAgentService,
+  deleteAgent as deleteAgentService,
+  renameAgent as renameAgentService,
+  regenerateAgentToken as regenerateAgentTokenService,
+  getAgentSecrets as getAgentSecretsService,
+  updateAgentSecretMode as updateAgentSecretModeService,
+  updateAgentSecrets as updateAgentSecretsService,
+} from "@/lib/services/agent-service";
 
-const generateAccessToken = () => `aoc_${randomBytes(32).toString("hex")}`;
-
-export async function getAgents() {
+export const getAgents = async () => {
   const userId = await resolveUserId();
+  return listAgents(userId);
+};
 
-  return db.agent.findMany({
-    where: { userId },
-    select: {
-      id: true,
-      name: true,
-      accessToken: true,
-      isDefault: true,
-      createdAt: true,
-    },
-    orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
-  });
-}
-
-export async function getDefaultAgent() {
+export const getDefaultAgent = async () => {
   const userId = await resolveUserId();
+  return getDefaultAgentService(userId);
+};
 
-  return db.agent.findFirst({
-    where: { userId, isDefault: true },
-    select: {
-      id: true,
-      name: true,
-      accessToken: true,
-      isDefault: true,
-      createdAt: true,
-    },
-  });
-}
-
-export async function createAgent(name: string) {
-  const trimmed = name.trim();
-  if (!trimmed || trimmed.length > 255) {
-    throw new Error("Name must be between 1 and 255 characters");
-  }
-
+export const createAgent = async (name: string, identifier: string) => {
   const userId = await resolveUserId();
-  const accessToken = generateAccessToken();
+  return createAgentService(userId, name, identifier);
+};
 
-  const agent = await db.agent.create({
-    data: {
-      name: trimmed,
-      accessToken,
-      userId,
-    },
-    select: {
-      id: true,
-      name: true,
-      accessToken: true,
-      createdAt: true,
-    },
-  });
-
-  return agent;
-}
-
-export async function deleteAgent(agentId: string) {
+export const deleteAgent = async (agentId: string) => {
   const userId = await resolveUserId();
+  return deleteAgentService(userId, agentId);
+};
 
-  const agent = await db.agent.findFirst({
-    where: { id: agentId, userId },
-    select: { id: true, isDefault: true },
-  });
-
-  if (!agent) throw new Error("Agent not found");
-  if (agent.isDefault) throw new Error("Cannot delete the default agent");
-
-  await db.agent.delete({ where: { id: agentId } });
-}
-
-export async function regenerateAgentToken(agentId: string) {
+export const renameAgent = async (agentId: string, name: string) => {
   const userId = await resolveUserId();
+  return renameAgentService(userId, agentId, name);
+};
 
-  const agent = await db.agent.findFirst({
-    where: { id: agentId, userId },
-    select: { id: true },
-  });
+export const regenerateAgentToken = async (agentId: string) => {
+  const userId = await resolveUserId();
+  return regenerateAgentTokenService(userId, agentId);
+};
 
-  if (!agent) throw new Error("Agent not found");
+export const getAgentSecrets = async (agentId: string) => {
+  const userId = await resolveUserId();
+  return getAgentSecretsService(userId, agentId);
+};
 
-  const accessToken = generateAccessToken();
+export const updateAgentSecretMode = async (
+  agentId: string,
+  mode: SecretMode,
+) => {
+  const userId = await resolveUserId();
+  return updateAgentSecretModeService(userId, agentId, mode);
+};
 
-  const updated = await db.agent.update({
-    where: { id: agentId },
-    data: { accessToken },
-    select: { accessToken: true },
-  });
-
-  return { accessToken: updated.accessToken };
-}
+export const updateAgentSecrets = async (
+  agentId: string,
+  secretIds: string[],
+) => {
+  const userId = await resolveUserId();
+  return updateAgentSecretsService(userId, agentId, secretIds);
+};

@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, RotateCw, Trash2 } from "lucide-react";
+import {
+  MoreHorizontal,
+  RotateCw,
+  Trash2,
+  KeyRound,
+  Pencil,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@onecli/ui/components/card";
 import { Button } from "@onecli/ui/components/button";
 import { Badge } from "@onecli/ui/components/badge";
+import { Input } from "@onecli/ui/components/input";
+import { Label } from "@onecli/ui/components/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,15 +30,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@onecli/ui/components/alert-dialog";
-import { deleteAgent, regenerateAgentToken } from "@/lib/actions/agents";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@onecli/ui/components/dialog";
+import {
+  deleteAgent,
+  regenerateAgentToken,
+  renameAgent,
+} from "@/lib/actions/agents";
+import type { SecretMode } from "@/lib/services/agent-service";
+import { ManageSecretsDialog } from "./manage-secrets-dialog";
 
 interface AgentCardProps {
   agent: {
     id: string;
     name: string;
+    identifier: string | null;
     accessToken: string;
     isDefault: boolean;
+    secretMode: SecretMode;
     createdAt: Date;
+    _count: { agentSecrets: number };
   };
   onUpdate: () => void;
 }
@@ -38,8 +62,12 @@ interface AgentCardProps {
 export const AgentCard = ({ agent, onUpdate }: AgentCardProps) => {
   const [deleting, setDeleting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [rotateDialogOpen, setRotateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [secretsDialogOpen, setSecretsDialogOpen] = useState(false);
 
   const handleRegenerate = async () => {
     setRegenerating(true);
@@ -67,6 +95,26 @@ export const AgentCard = ({ agent, onUpdate }: AgentCardProps) => {
     }
   };
 
+  const handleRename = async () => {
+    if (!newName.trim()) return;
+    setRenaming(true);
+    try {
+      await renameAgent(agent.id, newName);
+      onUpdate();
+      setRenameDialogOpen(false);
+      toast.success("Agent renamed");
+    } catch {
+      toast.error("Failed to rename agent");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const secretsLabel =
+    agent.secretMode === "selective"
+      ? `${agent._count.agentSecrets} ${agent._count.agentSecrets === 1 ? "secret" : "secrets"}`
+      : "All secrets";
+
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-4">
@@ -80,9 +128,24 @@ export const AgentCard = ({ agent, onUpdate }: AgentCardProps) => {
             )}
           </div>
 
-          <p className="text-muted-foreground text-xs">
-            Created {new Date(agent.createdAt).toLocaleDateString()}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            {agent.identifier && (
+              <code className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono">
+                {agent.identifier}
+              </code>
+            )}
+            <span className="text-muted-foreground">
+              Created {new Date(agent.createdAt).toLocaleDateString()}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSecretsDialogOpen(true)}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+            >
+              <KeyRound className="size-3" />
+              {secretsLabel}
+            </button>
+          </div>
         </div>
 
         <DropdownMenu>
@@ -92,6 +155,19 @@ export const AgentCard = ({ agent, onUpdate }: AgentCardProps) => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onSelect={() => {
+                setNewName(agent.name);
+                setRenameDialogOpen(true);
+              }}
+            >
+              <Pencil className="size-4" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setSecretsDialogOpen(true)}>
+              <KeyRound className="size-4" />
+              Manage secrets
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => setRotateDialogOpen(true)}>
               <RotateCw className="size-4" />
               Rotate token
@@ -152,6 +228,45 @@ export const AgentCard = ({ agent, onUpdate }: AgentCardProps) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename agent</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor={`rename-agent-${agent.id}`}>Name</Label>
+            <Input
+              id={`rename-agent-${agent.id}`}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newName.trim()) handleRename();
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRename}
+              loading={renaming}
+              disabled={!newName.trim()}
+            >
+              {renaming ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ManageSecretsDialog
+        agent={agent}
+        open={secretsDialogOpen}
+        onOpenChange={setSecretsDialogOpen}
+        onUpdated={onUpdate}
+      />
     </Card>
   );
 };

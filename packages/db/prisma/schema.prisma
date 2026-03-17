@@ -28,12 +28,17 @@ model Agent {
   id          String   @id @default(cuid())
   userId      String
   name        String
+  identifier  String?  // user-provided machine-readable ID, unique per user
   accessToken String   @unique // "aoc_..." prefix, used for gateway auth
   isDefault   Boolean  @default(false)
+  secretMode  String   @default("all") // "all" or "selective"
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id])
 
+  agentSecrets AgentSecret[]
+
+  @@unique([userId, identifier])
   @@index([userId])
 }
 
@@ -50,7 +55,18 @@ model Secret {
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id])
 
+  agentSecrets AgentSecret[]
+
   @@index([userId])
+}
+
+model AgentSecret {
+  agentId  String
+  secretId String
+  agent    Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  secret   Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, secretId])
 }
 
 model VaultConnection {

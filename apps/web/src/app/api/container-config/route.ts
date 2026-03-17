@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@onecli/db";
-import { validateApiKey } from "@/lib/validate-api-key";
-import { getServerSession } from "@/lib/auth/server";
+import { resolveApiAuth } from "@/lib/api-auth";
+import { unauthorized } from "@/lib/api-utils";
 import { loadCaCertificate } from "@/lib/gateway-ca";
 
 const GATEWAY_PORT = process.env.GATEWAY_PORT ?? "10255";
@@ -28,43 +28,35 @@ const getGatewayHost = (): string => {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Auth: API key or JWT session
-    const apiKeyUser = await validateApiKey(request);
+    const auth = await resolveApiAuth(request);
+    if (!auth) return unauthorized();
 
-    let userId: string | null = null;
+    // Look up agent: by identifier if provided, otherwise default
+    const agentIdentifier = request.nextUrl.searchParams.get("agent");
 
-    if (apiKeyUser) {
-      userId = apiKeyUser.id;
-    } else {
-      const session = await getServerSession();
-      if (session) {
-        const user = await db.user.findUnique({
-          where: { externalAuthId: session.id },
-          select: { id: true },
+    const agent = agentIdentifier
+      ? await db.agent.findFirst({
+          where: { userId: auth.userId, identifier: agentIdentifier },
+          select: { accessToken: true },
+        })
+      : await db.agent.findFirst({
+          where: { userId: auth.userId, isDefault: true },
+          select: { accessToken: true },
         });
-        userId = user?.id ?? null;
-      }
-    }
 
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Look up the user's default agent to embed its token in the gateway URL
-    const defaultAgent = await db.agent.findFirst({
-      where: { userId, isDefault: true },
-      select: { accessToken: true },
-    });
-
-    if (!defaultAgent) {
+    if (!agent) {
       return NextResponse.json(
-        { error: "No default agent found. Please create one first." },
+        {
+          error: agentIdentifier
+            ? "Agent with the given identifier not found."
+            : "No default agent found. Please create one first.",
+        },
         { status: 404 },
       );
     }
 
     const gatewayHost = getGatewayHost();
-    const gatewayUrl = `http://x:${defaultAgent.accessToken}@${gatewayHost}:${GATEWAY_PORT}`;
+    const gatewayUrl = `http://x:${agent.accessToken}@${gatewayHost}:${GATEWAY_PORT}`;
 
     const caCertificate = loadCaCertificate();
     if (!caCertificate) {
